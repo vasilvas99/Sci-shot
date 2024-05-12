@@ -156,6 +156,15 @@ impl App {
             ));
         }
     }
+    
+    fn process_points_buffer(&mut self){
+        if self.buffered_points.len() < 2 {
+            return;
+        }
+        self.regression_lines
+            .push(RegressionLineSegment::new(&self.buffered_points));
+        self.buffered_points.clear();
+    }
 }
 
 impl eframe::App for App {
@@ -171,14 +180,11 @@ impl eframe::App for App {
 
                 // if l is pressed calculate regression line and clear the points buffer
                 if ctx.input(|i| i.key_pressed(egui::Key::L)) {
-                    self.regression_lines
-                        .push(RegressionLineSegment::new(&self.buffered_points));
-                    self.buffered_points.clear();
+                  self.process_points_buffer();
                 }
                 // paint line segments
                 self.paint_line_segments(ui, LINE_THICKNESS);
 
-                //exit on esc
                 if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
                     std::process::exit(0);
                 }
