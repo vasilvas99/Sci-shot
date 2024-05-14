@@ -18,6 +18,35 @@ struct ScreenPoint {
     y: OrderedFloat<f32>,
 }
 
+struct RegressionLineSegment {
+    slope: f32,
+    intercept: f32,
+    start_x: ScreenPoint,
+    end_x: ScreenPoint,
+    draw_color: egui::Color32,
+}
+
+struct App {
+    preferred_monitor: Monitor,
+    screenshot_texture_handle: Option<Rc<egui::TextureHandle>>,
+    buffered_points: HashSet<ScreenPoint>,
+    regression_lines: Vec<RegressionLineSegment>,
+}
+
+fn secondary_btn_click_pos(i: &InputState) -> Option<egui::Pos2> {
+    if i.pointer.secondary_clicked() {
+        return i.pointer.latest_pos();
+    }
+    None
+}
+
+fn random_rgb_color32() -> egui::Color32 {
+    let r = rand::random::<u8>();
+    let g = rand::random::<u8>();
+    let b = rand::random::<u8>();
+    egui::Color32::from_rgb(r, g, b)
+}
+
 impl ScreenPoint {
     fn new(x: f32, y: f32) -> Self {
         ScreenPoint {
@@ -31,14 +60,6 @@ impl From<&ScreenPoint> for egui::Pos2 {
     fn from(val: &ScreenPoint) -> Self {
         egui::Pos2::new(val.x.into_inner(), val.y.into_inner())
     }
-}
-
-struct RegressionLineSegment {
-    slope: f32,
-    intercept: f32,
-    start_x: ScreenPoint,
-    end_x: ScreenPoint,
-    draw_color: egui::Color32,
 }
 
 impl RegressionLineSegment {
@@ -70,13 +91,6 @@ impl RegressionLineSegment {
     }
 }
 
-struct App {
-    preferred_monitor: Monitor,
-    screenshot_texture_handle: Option<Rc<egui::TextureHandle>>,
-    buffered_points: HashSet<ScreenPoint>,
-    regression_lines: Vec<RegressionLineSegment>,
-}
-
 impl Default for App {
     fn default() -> Self {
         let primary = Monitor::all()
@@ -92,20 +106,6 @@ impl Default for App {
             regression_lines: Vec::new(),
         }
     }
-}
-
-fn secondary_btn_click_pos(i: &InputState) -> Option<egui::Pos2> {
-    if i.pointer.secondary_clicked() {
-        return i.pointer.latest_pos();
-    }
-    None
-}
-
-fn random_rgb_color32() -> egui::Color32 {
-    let r = rand::random::<u8>();
-    let g = rand::random::<u8>();
-    let b = rand::random::<u8>();
-    egui::Color32::from_rgb(r, g, b)
 }
 
 impl App {
@@ -156,8 +156,8 @@ impl App {
             ));
         }
     }
-    
-    fn process_points_buffer(&mut self){
+
+    fn process_points_buffer(&mut self) {
         if self.buffered_points.len() < 2 {
             return;
         }
@@ -180,7 +180,7 @@ impl eframe::App for App {
 
                 // if l is pressed calculate regression line and clear the points buffer
                 if ctx.input(|i| i.key_pressed(egui::Key::L)) {
-                  self.process_points_buffer();
+                    self.process_points_buffer();
                 }
                 // paint line segments
                 self.paint_line_segments(ui, LINE_THICKNESS);
@@ -196,16 +196,23 @@ impl eframe::App for App {
                 ui.label(format!("({}, {})", point.x, point.y));
             }
         });
+
         egui::Window::new("Line equations")
             .default_pos(egui::pos2(500.0, 0.0))
             .show(ctx, |ui| {
                 ui.label("Line equations:");
-                for line in &self.regression_lines {
+                let mut keep = vec![true; self.regression_lines.len()];
+                for (idx, line) in self.regression_lines.iter().enumerate() {
                     ui.horizontal(|ui| {
+                        if ui.button("❌").clicked() {
+                            keep[idx] = false;
+                        }
                         ui.add_enabled(false, egui::Button::new("        ").fill(line.draw_color));
-                        ui.label(format!("y = {}x + {}", line.slope, line.intercept));
+                        ui.label(format!("y = {:.3}x + {:.3}", line.slope, line.intercept));
                     });
                 }
+                let mut iter = keep.iter();      
+                self.regression_lines.retain(|_| *iter.next().unwrap());
             });
     }
 }
