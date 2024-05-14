@@ -18,9 +18,12 @@ struct ScreenPoint {
     y: OrderedFloat<f32>,
 }
 
+type UniquePointBuf = HashSet<ScreenPoint>;
+
 struct RegressionLineSegment {
     slope: f32,
     intercept: f32,
+    points: UniquePointBuf,
     start_x: ScreenPoint,
     end_x: ScreenPoint,
     draw_color: egui::Color32,
@@ -29,7 +32,7 @@ struct RegressionLineSegment {
 struct App {
     preferred_monitor: Monitor,
     screenshot_texture_handle: Option<Rc<egui::TextureHandle>>,
-    buffered_points: HashSet<ScreenPoint>,
+    buffered_points: UniquePointBuf,
     regression_lines: Vec<RegressionLineSegment>,
 }
 
@@ -63,7 +66,7 @@ impl From<&ScreenPoint> for egui::Pos2 {
 }
 
 impl RegressionLineSegment {
-    fn new(points: &HashSet<ScreenPoint>) -> Self {
+    fn get_regression_line(points: &UniquePointBuf) -> (f32, f32) {
         let n = points.len() as f32;
         let sum_x = points.iter().map(|p| p.x.into_inner()).sum::<f32>();
         let sum_y = points.iter().map(|p| p.y.into_inner()).sum::<f32>();
@@ -78,12 +81,18 @@ impl RegressionLineSegment {
 
         let slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x_squared - sum_x * sum_x);
         let intercept = (sum_y - slope * sum_x) / n;
+        (slope, intercept)
+    }
+
+    fn new(points: &UniquePointBuf) -> Self {
+        let (slope, intercept) = RegressionLineSegment::get_regression_line(points);
 
         let leftmost = points.iter().min_by_key(|p| p.x).unwrap();
         let rightmost = points.iter().max_by_key(|p| p.x).unwrap();
         RegressionLineSegment {
             slope,
             intercept,
+            points: points.clone(),
             start_x: leftmost.clone(),
             end_x: rightmost.clone(),
             draw_color: random_rgb_color32(),
