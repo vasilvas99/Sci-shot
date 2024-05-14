@@ -211,7 +211,7 @@ impl eframe::App for App {
                         ui.label(format!("y = {:.3}x + {:.3}", line.slope, line.intercept));
                     });
                 }
-                let mut iter = keep.iter();      
+                let mut iter = keep.iter();
                 self.regression_lines.retain(|_| *iter.next().unwrap());
             });
     }
