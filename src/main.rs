@@ -12,6 +12,17 @@ static SCREENSHOT_TEXTURE: &str = "screenshot";
 static LINE_THICKNESS: f32 = 3.0;
 static POINT_RADIUS: f32 = 2.5;
 
+enum PointGatheringState {
+    Normal,
+    Measurement,
+}
+
+struct PointTransform {
+    rotation_angle: f32,
+    scale: f32,
+    translation: [f32; 2],
+}
+
 #[derive(Eq, Hash, PartialEq, Clone, Debug)]
 struct ScreenPoint {
     x: OrderedFloat<f32>,
@@ -20,10 +31,18 @@ struct ScreenPoint {
 
 type UniquePointBuf = HashSet<ScreenPoint>;
 
+trait Transformable {
+    fn transform(&self, transform: &PointTransform) -> Self;
+    fn transform_inplace(&mut self, transform: &PointTransform);
+}
+
 struct RegressionLineSegment {
     slope: f32,
     intercept: f32,
+    transformed_slope: f32,
+    transformed_intercept: f32,
     points: UniquePointBuf,
+    transformed_points: UniquePointBuf,
     start_x: ScreenPoint,
     end_x: ScreenPoint,
     draw_color: egui::Color32,
@@ -32,8 +51,11 @@ struct RegressionLineSegment {
 struct App {
     preferred_monitor: Monitor,
     screenshot_texture_handle: Option<Rc<egui::TextureHandle>>,
+    gathering_state: PointGatheringState,
     buffered_points: UniquePointBuf,
+    measurement_buffer: UniquePointBuf,
     regression_lines: Vec<RegressionLineSegment>,
+    current_transform: PointTransform,
 }
 
 fn secondary_btn_click_pos(i: &InputState) -> Option<egui::Pos2> {
@@ -41,6 +63,43 @@ fn secondary_btn_click_pos(i: &InputState) -> Option<egui::Pos2> {
         return i.pointer.latest_pos();
     }
     None
+}
+
+impl Transformable for ScreenPoint {
+    fn transform(&self, transform: &PointTransform) -> Self {
+        let x = self.x.into_inner();
+        let y = self.y.into_inner();
+        let x = x * transform.scale;
+        let y = y * transform.scale;
+        let x = x * transform.rotation_angle.cos() - y * transform.rotation_angle.sin();
+        let y = x * transform.rotation_angle.sin() + y * transform.rotation_angle.cos();
+        let x = x + transform.translation[0];
+        let y = y + transform.translation[1];
+        ScreenPoint::new(x, y)
+    }
+    fn transform_inplace(&mut self, transform: &PointTransform) {
+        self.x = OrderedFloat(
+            self.x.into_inner() * transform.scale * transform.rotation_angle.cos()
+                - self.y.into_inner() * transform.rotation_angle.sin(),
+        );
+        self.y = OrderedFloat(
+            self.x.into_inner() * transform.rotation_angle.sin()
+                + self.y.into_inner() * transform.rotation_angle.cos(),
+        );
+        self.x = OrderedFloat(self.x.into_inner() + transform.translation[0]);
+        self.y = OrderedFloat(self.y.into_inner() + transform.translation[1]);
+    }
+}
+
+impl Transformable for UniquePointBuf {
+    fn transform(&self, transform: &PointTransform) -> Self {
+        self.iter()
+            .map(|p| p.transform(transform))
+            .collect::<UniquePointBuf>()
+    }
+    fn transform_inplace(&mut self, _transform: &PointTransform) {
+        todo!("Implement in-place transformation for UniquePointBuf");
+    }
 }
 
 fn random_rgb_color32() -> egui::Color32 {
@@ -92,7 +151,10 @@ impl RegressionLineSegment {
         RegressionLineSegment {
             slope,
             intercept,
+            transformed_slope: slope,
+            transformed_intercept: intercept,
             points: points.clone(),
+            transformed_points: points.clone(),
             start_x: leftmost.clone(),
             end_x: rightmost.clone(),
             draw_color: random_rgb_color32(),
@@ -111,8 +173,15 @@ impl Default for App {
         App {
             preferred_monitor: primary,
             screenshot_texture_handle: None,
-            buffered_points: HashSet::new(),
+            gathering_state: PointGatheringState::Normal,
+            buffered_points: UniquePointBuf::new(),
+            measurement_buffer: UniquePointBuf::new(),
             regression_lines: Vec::new(),
+            current_transform: PointTransform {
+                rotation_angle: 0.0,
+                scale: 1.0,
+                translation: [0.0, 0.0],
+            },
         }
     }
 }
@@ -141,7 +210,11 @@ impl App {
     }
 
     fn paint_buffered_points(&mut self, ui: &mut egui::Ui) {
-        for point in &self.buffered_points {
+        let points_to_paint = match self.gathering_state {
+            PointGatheringState::Normal => &self.buffered_points,
+            PointGatheringState::Measurement => &self.measurement_buffer,
+        };
+        for point in points_to_paint {
             ui.painter()
                 .add(egui::Shape::Circle(egui::epaint::CircleShape {
                     center: point.into(),
@@ -174,6 +247,16 @@ impl App {
             .push(RegressionLineSegment::new(&self.buffered_points));
         self.buffered_points.clear();
     }
+
+    fn transform_line_segments(&mut self) {
+        for line in &mut self.regression_lines {
+            line.transformed_points = line.points.transform(&self.current_transform);
+            let (new_slope, new_intercept) =
+                RegressionLineSegment::get_regression_line(&line.transformed_points);
+            line.transformed_slope = new_slope;
+            line.transformed_intercept = new_intercept;
+        }
+    }
 }
 
 impl eframe::App for App {
@@ -183,7 +266,15 @@ impl eframe::App for App {
             .show(ctx, |ui| {
                 self.draw_screenshot_layer(ui);
                 if let Some(pos) = ui.input(secondary_btn_click_pos) {
-                    self.buffered_points.insert(ScreenPoint::new(pos.x, pos.y));
+                    match self.gathering_state {
+                        PointGatheringState::Normal => {
+                            self.buffered_points.insert(ScreenPoint::new(pos.x, pos.y));
+                        }
+                        PointGatheringState::Measurement => {
+                            self.measurement_buffer
+                                .insert(ScreenPoint::new(pos.x, pos.y));
+                        }
+                    }
                 }
                 self.paint_buffered_points(ui);
 
@@ -191,6 +282,10 @@ impl eframe::App for App {
                 if ctx.input(|i| i.key_pressed(egui::Key::L)) {
                     self.process_points_buffer();
                 }
+
+                // apply current transform to line segments (Slow and in the hot loop)
+                self.transform_line_segments();
+
                 // paint line segments
                 self.paint_line_segments(ui, LINE_THICKNESS);
 
@@ -201,7 +296,11 @@ impl eframe::App for App {
 
         egui::Window::new("Buffered points").show(ctx, |ui| {
             ui.label("Buffered points:");
-            for point in &self.buffered_points {
+            let points_to_show = match self.gathering_state {
+                PointGatheringState::Normal => &self.buffered_points,
+                PointGatheringState::Measurement => &self.measurement_buffer,
+            };
+            for point in points_to_show {
                 ui.label(format!("({}, {})", point.x, point.y));
             }
         });
@@ -217,11 +316,63 @@ impl eframe::App for App {
                             keep[idx] = false;
                         }
                         ui.add_enabled(false, egui::Button::new("        ").fill(line.draw_color));
-                        ui.label(format!("y = {:.3}x + {:.3}", line.slope, line.intercept));
+                        ui.label(format!(
+                            "y = {:.3}x + {:.3}",
+                            line.transformed_slope, line.transformed_intercept
+                        ));
                     });
                 }
                 let mut iter = keep.iter();
                 self.regression_lines.retain(|_| *iter.next().unwrap());
+            });
+
+        egui::Window::new("Configure Transform")
+            .default_pos(egui::pos2(0.0, 500.0))
+            .show(ctx, |ui| {
+                ui.label("Configure Transform:");
+                ui.horizontal(|ui| {
+                    ui.label("Rotation Angle:");
+                    ui.add(
+                        egui::Slider::new(
+                            &mut self.current_transform.rotation_angle,
+                            -std::f32::consts::PI..=std::f32::consts::PI,
+                        )
+                        .text("Rotation Angle")
+                        .clamp_to_range(true),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Scale:");
+                    ui.add(
+                        egui::Slider::new(&mut self.current_transform.scale, 0.0..=10.0)
+                            .text("Scale")
+                            .clamp_to_range(true),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Translation:");
+                    ui.add(
+                        egui::Slider::new(
+                            &mut self.current_transform.translation[0],
+                            -1000.0..=1000.0,
+                        )
+                        .text("X")
+                        .clamp_to_range(true),
+                    );
+                    ui.add(
+                        egui::Slider::new(
+                            &mut self.current_transform.translation[1],
+                            -1000.0..=1000.0,
+                        )
+                        .text("Y")
+                        .clamp_to_range(true),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Measure Transform").clicked() {
+                        self.gathering_state = PointGatheringState::Measurement;
+                    }
+                });
             });
     }
 }
