@@ -3,33 +3,45 @@
 use eframe::egui;
 use egui::{ColorImage, InputState};
 
+use bounded_vec_deque::BoundedVecDeque;
+use faer::solvers::SpSolver;
 use ordered_float::OrderedFloat;
 use std::collections::HashSet;
 use std::{hash::Hash, rc::Rc};
 use xcap::Monitor;
+use faer::{self, mat};
 
 static SCREENSHOT_TEXTURE: &str = "screenshot";
 static LINE_THICKNESS: f32 = 3.0;
 static POINT_RADIUS: f32 = 2.5;
+static NUM_CALIBRATION_POINTS: usize = 2;
 
 enum PointGatheringState {
     Normal,
     Measurement,
 }
 
+#[derive(Debug)]
 struct PointTransform {
-    rotation_angle: f32,
-    scale: f32,
-    translation: [f32; 2],
+    alpha: f32, // Cos theta
+    beta: f32,  // Sin theta
+    dx: f32,
+    dy: f32,
 }
 
 #[derive(Eq, Hash, PartialEq, Clone, Debug)]
-struct ScreenPoint {
+struct PointCoords {
     x: OrderedFloat<f32>,
     y: OrderedFloat<f32>,
 }
 
-type UniquePointBuf = HashSet<ScreenPoint>;
+#[derive(Clone, Debug)]
+struct PointCoordsStringy {
+    x: String,
+    y: String,
+}
+
+type UniquePointBuf = HashSet<PointCoords>;
 
 trait Transformable {
     fn transform(&self, transform: &PointTransform) -> Self;
@@ -43,8 +55,8 @@ struct RegressionLineSegment {
     transformed_intercept: f32,
     points: UniquePointBuf,
     transformed_points: UniquePointBuf,
-    start_x: ScreenPoint,
-    end_x: ScreenPoint,
+    start_x: PointCoords,
+    end_x: PointCoords,
     draw_color: egui::Color32,
 }
 
@@ -53,7 +65,9 @@ struct App {
     screenshot_texture_handle: Option<Rc<egui::TextureHandle>>,
     gathering_state: PointGatheringState,
     buffered_points: UniquePointBuf,
-    measurement_buffer: UniquePointBuf,
+    measurement_buffer: BoundedVecDeque<PointCoords>,
+    measurement_buffer_real_world: BoundedVecDeque<PointCoords>,
+    measurement_buffer_rw_s: BoundedVecDeque<PointCoordsStringy>,
     regression_lines: Vec<RegressionLineSegment>,
     current_transform: PointTransform,
 }
@@ -65,29 +79,20 @@ fn secondary_btn_click_pos(i: &InputState) -> Option<egui::Pos2> {
     None
 }
 
-impl Transformable for ScreenPoint {
+impl Transformable for PointCoords {
     fn transform(&self, transform: &PointTransform) -> Self {
-        let x = self.x.into_inner();
-        let y = self.y.into_inner();
-        let x = x * transform.scale;
-        let y = y * transform.scale;
-        let x = x * transform.rotation_angle.cos() - y * transform.rotation_angle.sin();
-        let y = x * transform.rotation_angle.sin() + y * transform.rotation_angle.cos();
-        let x = x + transform.translation[0];
-        let y = y + transform.translation[1];
-        ScreenPoint::new(x, y)
+        let x = transform.alpha * self.x.into_inner() - transform.beta * self.y.into_inner()
+            + transform.dx;
+        let y = transform.beta * self.x.into_inner()
+            + transform.alpha * self.y.into_inner()
+            + transform.dy;
+        PointCoords {
+            x: OrderedFloat(x),
+            y: OrderedFloat(y),
+        }
     }
-    fn transform_inplace(&mut self, transform: &PointTransform) {
-        self.x = OrderedFloat(
-            self.x.into_inner() * transform.scale * transform.rotation_angle.cos()
-                - self.y.into_inner() * transform.rotation_angle.sin(),
-        );
-        self.y = OrderedFloat(
-            self.x.into_inner() * transform.rotation_angle.sin()
-                + self.y.into_inner() * transform.rotation_angle.cos(),
-        );
-        self.x = OrderedFloat(self.x.into_inner() + transform.translation[0]);
-        self.y = OrderedFloat(self.y.into_inner() + transform.translation[1]);
+    fn transform_inplace(&mut self, _transform: &PointTransform) {
+        todo!("Implement in-place transformation for ScreenPoint")
     }
 }
 
@@ -109,17 +114,32 @@ fn random_rgb_color32() -> egui::Color32 {
     egui::Color32::from_rgb(r, g, b)
 }
 
-impl ScreenPoint {
+impl PointCoords {
     fn new(x: f32, y: f32) -> Self {
-        ScreenPoint {
+        PointCoords {
             x: OrderedFloat(x),
             y: OrderedFloat(y),
         }
     }
 }
 
-impl From<&ScreenPoint> for egui::Pos2 {
-    fn from(val: &ScreenPoint) -> Self {
+impl PointCoordsStringy {
+    fn new_numeric(x: f32, y: f32) -> Self {
+        PointCoordsStringy {
+            x: x.to_string(),
+            y: y.to_string(),
+        }
+    }
+
+    fn try_as_numeric(&self) -> Option<PointCoords> {
+        let x = self.x.parse::<f32>().ok()?;
+        let y = self.y.parse::<f32>().ok()?;
+        Some(PointCoords::new(x, y))
+    }
+}
+
+impl From<&PointCoords> for egui::Pos2 {
+    fn from(val: &PointCoords) -> Self {
         egui::Pos2::new(val.x.into_inner(), val.y.into_inner())
     }
 }
@@ -169,18 +189,26 @@ impl Default for App {
             .into_iter()
             .find(|m| m.is_primary())
             .unwrap();
-
         App {
             preferred_monitor: primary,
             screenshot_texture_handle: None,
             gathering_state: PointGatheringState::Normal,
             buffered_points: UniquePointBuf::new(),
-            measurement_buffer: UniquePointBuf::new(),
+            measurement_buffer: BoundedVecDeque::new(NUM_CALIBRATION_POINTS),
+            measurement_buffer_real_world: BoundedVecDeque::from_iter(
+                std::iter::repeat(PointCoords::new(0.0, 0.0)),
+                NUM_CALIBRATION_POINTS,
+            ),
+            measurement_buffer_rw_s: BoundedVecDeque::from_iter(
+                std::iter::repeat(PointCoordsStringy::new_numeric(0.0, 0.0)),
+                NUM_CALIBRATION_POINTS,
+            ),
             regression_lines: Vec::new(),
             current_transform: PointTransform {
-                rotation_angle: 0.0,
-                scale: 1.0,
-                translation: [0.0, 0.0],
+                alpha: 1.0,
+                beta: 0.0,
+                dx: 0.0,
+                dy: 0.0,
             },
         }
     }
@@ -210,9 +238,9 @@ impl App {
     }
 
     fn paint_buffered_points(&mut self, ui: &mut egui::Ui) {
-        let points_to_paint = match self.gathering_state {
-            PointGatheringState::Normal => &self.buffered_points,
-            PointGatheringState::Measurement => &self.measurement_buffer,
+        let points_to_paint: Box<dyn Iterator<Item = _>> = match self.gathering_state {
+            PointGatheringState::Normal => Box::from(self.buffered_points.iter()),
+            PointGatheringState::Measurement => Box::from(self.measurement_buffer.iter()),
         };
         for point in points_to_paint {
             ui.painter()
@@ -268,11 +296,12 @@ impl eframe::App for App {
                 if let Some(pos) = ui.input(secondary_btn_click_pos) {
                     match self.gathering_state {
                         PointGatheringState::Normal => {
-                            self.buffered_points.insert(ScreenPoint::new(pos.x, pos.y));
+                            self.buffered_points.insert(PointCoords::new(pos.x, pos.y));
                         }
                         PointGatheringState::Measurement => {
-                            self.measurement_buffer
-                                .insert(ScreenPoint::new(pos.x, pos.y));
+                            let _ = self
+                                .measurement_buffer
+                                .push_back(PointCoords::new(pos.x, pos.y));
                         }
                     }
                 }
@@ -283,7 +312,6 @@ impl eframe::App for App {
                     self.process_points_buffer();
                 }
 
-                // apply current transform to line segments (Slow and in the hot loop)
                 self.transform_line_segments();
 
                 // paint line segments
@@ -296,12 +324,13 @@ impl eframe::App for App {
 
         egui::Window::new("Buffered points").show(ctx, |ui| {
             ui.label("Buffered points:");
-            let points_to_show = match self.gathering_state {
-                PointGatheringState::Normal => &self.buffered_points,
-                PointGatheringState::Measurement => &self.measurement_buffer,
+            let points_to_show: Box<dyn Iterator<Item = _>> = match self.gathering_state {
+                PointGatheringState::Normal => Box::from(self.buffered_points.iter()),
+                PointGatheringState::Measurement => Box::from(self.measurement_buffer.iter()),
             };
             for point in points_to_show {
-                ui.label(format!("({}, {})", point.x, point.y));
+                let point_rw = point.transform(&self.current_transform);
+                ui.label(format!("({}, {})", point_rw.x, point_rw.y));
             }
         });
 
@@ -325,54 +354,55 @@ impl eframe::App for App {
                 let mut iter = keep.iter();
                 self.regression_lines.retain(|_| *iter.next().unwrap());
             });
-
-        egui::Window::new("Configure Transform")
+        egui::Window::new("Calibrate Transform")
             .default_pos(egui::pos2(0.0, 500.0))
+            .default_open(false)
             .show(ctx, |ui| {
-                ui.label("Configure Transform:");
+                ui.label("Measure two points on the screen to calibrate the transform");
                 ui.horizontal(|ui| {
-                    ui.label("Rotation Angle:");
-                    ui.add(
-                        egui::Slider::new(
-                            &mut self.current_transform.rotation_angle,
-                            -std::f32::consts::PI..=std::f32::consts::PI,
-                        )
-                        .text("Rotation Angle")
-                        .clamp_to_range(true),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Scale:");
-                    ui.add(
-                        egui::Slider::new(&mut self.current_transform.scale, 0.0..=10.0)
-                            .text("Scale")
-                            .clamp_to_range(true),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Translation:");
-                    ui.add(
-                        egui::Slider::new(
-                            &mut self.current_transform.translation[0],
-                            -1000.0..=1000.0,
-                        )
-                        .text("X")
-                        .clamp_to_range(true),
-                    );
-                    ui.add(
-                        egui::Slider::new(
-                            &mut self.current_transform.translation[1],
-                            -1000.0..=1000.0,
-                        )
-                        .text("Y")
-                        .clamp_to_range(true),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    if ui.button("Measure Transform").clicked() {
+                    if ui.button("Go to calibration mode").clicked() {
                         self.gathering_state = PointGatheringState::Measurement;
                     }
+                    if ui.button("Calibrate").clicked() {
+                        for i in 0..self.measurement_buffer.len() {
+                            // better crash on bad input than silently ignore it
+                            let point = self.measurement_buffer_rw_s[i].try_as_numeric().unwrap();
+                            self.measurement_buffer_real_world[i] = point;
+                        }
+                        let p1_screen = self.measurement_buffer[0].clone();
+                        let p2_screen = self.measurement_buffer[1].clone();
+                        let p1_rw = self.measurement_buffer_real_world[0].clone();
+                        let p2_rw = self.measurement_buffer_real_world[1].clone();
+                        todo!("Revise transform calculation!");
+                        let mtx = mat![
+                            [p1_screen.x.into_inner(), -p1_screen.y.into_inner(), 1.0, 0.0],
+                            [p1_screen.y.into_inner(), p1_screen.x.into_inner(), 0.0, 1.0],
+                            [p2_screen.x.into_inner(), -p2_screen.y.into_inner(), 1.0, 0.0],
+                            [p2_screen.y.into_inner(), p2_screen.x.into_inner(), 0.0, 1.0],
+                        ];
+                        let rhs = mat![[p1_rw.x.into_inner(), p1_rw.y.into_inner(), p2_rw.x.into_inner(), p2_rw.y.into_inner()]];
+                        let lu = mtx.full_piv_lu();
+                        let x = lu.solve(rhs.transpose());
+                        self.current_transform = PointTransform {
+                            alpha: x[(0, 0)],
+                            beta: x[(1, 0)],
+                            dx: x[(2, 0)],
+                            dy: x[(3, 0)],
+                        };
+                        println!("Transform: {:?}", self.current_transform);
+                        self.gathering_state = PointGatheringState::Normal;
+
+                    
+                    }
                 });
+                for i in 0..self.measurement_buffer.len() {
+                    ui.horizontal(|ui: &mut egui::Ui| {
+                        ui.label(format!("x: {}", self.measurement_buffer[i].x));
+                        ui.label(format!("y: {}", self.measurement_buffer[i].y));
+                        ui.text_edit_singleline(&mut self.measurement_buffer_rw_s[i].x);
+                        ui.text_edit_singleline(&mut self.measurement_buffer_rw_s[i].y);
+                    });
+                }
             });
     }
 }
