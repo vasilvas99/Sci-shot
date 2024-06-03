@@ -5,11 +5,11 @@ use egui::{ColorImage, InputState};
 
 use bounded_vec_deque::BoundedVecDeque;
 use faer::solvers::SpSolver;
+use faer::{self, mat};
 use ordered_float::OrderedFloat;
 use std::collections::HashSet;
 use std::{hash::Hash, rc::Rc};
 use xcap::Monitor;
-use faer::{self, mat};
 
 static SCREENSHOT_TEXTURE: &str = "screenshot";
 static LINE_THICKNESS: f32 = 3.0;
@@ -81,14 +81,16 @@ fn secondary_btn_click_pos(i: &InputState) -> Option<egui::Pos2> {
 
 impl Transformable for PointCoords {
     fn transform(&self, transform: &PointTransform) -> Self {
-        let x = transform.alpha * self.x.into_inner() - transform.beta * self.y.into_inner()
-            + transform.dx;
-        let y = transform.beta * self.x.into_inner()
-            + transform.alpha * self.y.into_inner()
-            + transform.dy;
+        let m = mat![
+            [transform.alpha, -transform.beta],
+            [transform.beta, transform.alpha],
+        ];
+        let t = mat![[transform.dx, transform.dy]];
+        let p = mat![[self.x.into_inner(), -self.y.into_inner()]];
+        let p_transformed = m * p.transpose() + t.transpose();
         PointCoords {
-            x: OrderedFloat(x),
-            y: OrderedFloat(y),
+            x: OrderedFloat(p_transformed[(0, 0)]),
+            y: OrderedFloat(p_transformed[(1, 0)]),
         }
     }
     fn transform_inplace(&mut self, _transform: &PointTransform) {
@@ -373,14 +375,28 @@ impl eframe::App for App {
                         let p2_screen = self.measurement_buffer[1].clone();
                         let p1_rw = self.measurement_buffer_real_world[0].clone();
                         let p2_rw = self.measurement_buffer_real_world[1].clone();
-                        todo!("Revise transform calculation!");
                         let mtx = mat![
-                            [p1_screen.x.into_inner(), -p1_screen.y.into_inner(), 1.0, 0.0],
-                            [p1_screen.y.into_inner(), p1_screen.x.into_inner(), 0.0, 1.0],
-                            [p2_screen.x.into_inner(), -p2_screen.y.into_inner(), 1.0, 0.0],
-                            [p2_screen.y.into_inner(), p2_screen.x.into_inner(), 0.0, 1.0],
+                            [p1_screen.x.into_inner(), p1_screen.y.into_inner(), 1.0, 0.0],
+                            [
+                                -p1_screen.y.into_inner(),
+                                p1_screen.x.into_inner(),
+                                0.0,
+                                1.0
+                            ],
+                            [p2_screen.x.into_inner(), p2_screen.y.into_inner(), 1.0, 0.0],
+                            [
+                                -p2_screen.y.into_inner(),
+                                p2_screen.x.into_inner(),
+                                0.0,
+                                1.0
+                            ],
                         ];
-                        let rhs = mat![[p1_rw.x.into_inner(), p1_rw.y.into_inner(), p2_rw.x.into_inner(), p2_rw.y.into_inner()]];
+                        let rhs = mat![[
+                            p1_rw.x.into_inner(),
+                            p1_rw.y.into_inner(),
+                            p2_rw.x.into_inner(),
+                            p2_rw.y.into_inner()
+                        ]];
                         let lu = mtx.full_piv_lu();
                         let x = lu.solve(rhs.transpose());
                         self.current_transform = PointTransform {
@@ -391,8 +407,6 @@ impl eframe::App for App {
                         };
                         println!("Transform: {:?}", self.current_transform);
                         self.gathering_state = PointGatheringState::Normal;
-
-                    
                     }
                 });
                 for i in 0..self.measurement_buffer.len() {
