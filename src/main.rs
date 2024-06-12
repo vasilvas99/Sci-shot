@@ -1,14 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use bounded_vec_deque::BoundedVecDeque;
 use eframe::egui;
 use egui::{ColorImage, InputState};
 
-use bounded_vec_deque::BoundedVecDeque;
-use faer::solvers::SpSolver;
-use faer::{self, mat};
-use ordered_float::OrderedFloat;
-use std::collections::HashSet;
-use std::{hash::Hash, rc::Rc};
+use point_handling::{
+    PointCoords, PointCoordsStringy, PointTransform, RegressionLineSegment, Transformable,
+    UniquePointBuf,
+};
+
+use std::rc::Rc;
 use xcap::Monitor;
 
 static SCREENSHOT_TEXTURE: &str = "screenshot";
@@ -16,48 +17,10 @@ static LINE_THICKNESS: f32 = 3.0;
 static POINT_RADIUS: f32 = 2.5;
 static NUM_CALIBRATION_POINTS: usize = 2;
 
+mod point_handling;
 enum PointGatheringState {
     Normal,
     Measurement,
-}
-
-#[derive(Debug)]
-struct PointTransform {
-    alpha: f32, // Cos theta
-    beta: f32,  // Sin theta
-    dx: f32,
-    dy: f32,
-}
-
-#[derive(Eq, Hash, PartialEq, Clone, Debug)]
-struct PointCoords {
-    x: OrderedFloat<f32>,
-    y: OrderedFloat<f32>,
-}
-
-#[derive(Clone, Debug)]
-struct PointCoordsStringy {
-    x: String,
-    y: String,
-}
-
-type UniquePointBuf = HashSet<PointCoords>;
-
-trait Transformable {
-    fn transform(&self, transform: &PointTransform) -> Self;
-    fn transform_inplace(&mut self, transform: &PointTransform);
-}
-
-struct RegressionLineSegment {
-    slope: f32,
-    intercept: f32,
-    transformed_slope: f32,
-    transformed_intercept: f32,
-    points: UniquePointBuf,
-    transformed_points: UniquePointBuf,
-    start_x: PointCoords,
-    end_x: PointCoords,
-    draw_color: egui::Color32,
 }
 
 struct App {
@@ -77,111 +40,6 @@ fn secondary_btn_click_pos(i: &InputState) -> Option<egui::Pos2> {
         return i.pointer.latest_pos();
     }
     None
-}
-
-impl Transformable for PointCoords {
-    fn transform(&self, transform: &PointTransform) -> Self {
-        let m = mat![
-            [transform.alpha, -transform.beta],
-            [transform.beta, transform.alpha],
-        ];
-        let t = mat![[transform.dx, transform.dy]];
-        let p = mat![[self.x.into_inner(), -self.y.into_inner()]];
-        let p_transformed = m * p.transpose() + t.transpose();
-        PointCoords {
-            x: OrderedFloat(p_transformed[(0, 0)]),
-            y: OrderedFloat(p_transformed[(1, 0)]),
-        }
-    }
-    fn transform_inplace(&mut self, _transform: &PointTransform) {
-        todo!("Implement in-place transformation for ScreenPoint")
-    }
-}
-
-impl Transformable for UniquePointBuf {
-    fn transform(&self, transform: &PointTransform) -> Self {
-        self.iter()
-            .map(|p| p.transform(transform))
-            .collect::<UniquePointBuf>()
-    }
-    fn transform_inplace(&mut self, _transform: &PointTransform) {
-        todo!("Implement in-place transformation for UniquePointBuf");
-    }
-}
-
-fn random_rgb_color32() -> egui::Color32 {
-    let r = rand::random::<u8>();
-    let g = rand::random::<u8>();
-    let b = rand::random::<u8>();
-    egui::Color32::from_rgb(r, g, b)
-}
-
-impl PointCoords {
-    fn new(x: f32, y: f32) -> Self {
-        PointCoords {
-            x: OrderedFloat(x),
-            y: OrderedFloat(y),
-        }
-    }
-}
-
-impl PointCoordsStringy {
-    fn new_numeric(x: f32, y: f32) -> Self {
-        PointCoordsStringy {
-            x: x.to_string(),
-            y: y.to_string(),
-        }
-    }
-
-    fn try_as_numeric(&self) -> Option<PointCoords> {
-        let x = self.x.parse::<f32>().ok()?;
-        let y = self.y.parse::<f32>().ok()?;
-        Some(PointCoords::new(x, y))
-    }
-}
-
-impl From<&PointCoords> for egui::Pos2 {
-    fn from(val: &PointCoords) -> Self {
-        egui::Pos2::new(val.x.into_inner(), val.y.into_inner())
-    }
-}
-
-impl RegressionLineSegment {
-    fn get_regression_line(points: &UniquePointBuf) -> (f32, f32) {
-        let n = points.len() as f32;
-        let sum_x = points.iter().map(|p| p.x.into_inner()).sum::<f32>();
-        let sum_y = points.iter().map(|p| p.y.into_inner()).sum::<f32>();
-        let sum_x_squared = points
-            .iter()
-            .map(|p| p.x.into_inner() * p.x.into_inner())
-            .sum::<f32>();
-        let sum_xy = points
-            .iter()
-            .map(|p| p.x.into_inner() * p.y.into_inner())
-            .sum::<f32>();
-
-        let slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x_squared - sum_x * sum_x);
-        let intercept = (sum_y - slope * sum_x) / n;
-        (slope, intercept)
-    }
-
-    fn new(points: &UniquePointBuf) -> Self {
-        let (slope, intercept) = RegressionLineSegment::get_regression_line(points);
-
-        let leftmost = points.iter().min_by_key(|p| p.x).unwrap();
-        let rightmost = points.iter().max_by_key(|p| p.x).unwrap();
-        RegressionLineSegment {
-            slope,
-            intercept,
-            transformed_slope: slope,
-            transformed_intercept: intercept,
-            points: points.clone(),
-            transformed_points: points.clone(),
-            start_x: leftmost.clone(),
-            end_x: rightmost.clone(),
-            draw_color: random_rgb_color32(),
-        }
-    }
 }
 
 impl Default for App {
@@ -356,7 +214,7 @@ impl eframe::App for App {
                 let mut iter = keep.iter();
                 self.regression_lines.retain(|_| *iter.next().unwrap());
             });
-        egui::Window::new("Calibrate Transform")
+        egui::Window::new("Transform calibration")
             .default_pos(egui::pos2(0.0, 500.0))
             .default_open(false)
             .show(ctx, |ui| {
@@ -375,36 +233,10 @@ impl eframe::App for App {
                         let p2_screen = self.measurement_buffer[1].clone();
                         let p1_rw = self.measurement_buffer_real_world[0].clone();
                         let p2_rw = self.measurement_buffer_real_world[1].clone();
-                        let mtx = mat![
-                            [p1_screen.x.into_inner(), p1_screen.y.into_inner(), 1.0, 0.0],
-                            [
-                                -p1_screen.y.into_inner(),
-                                p1_screen.x.into_inner(),
-                                0.0,
-                                1.0
-                            ],
-                            [p2_screen.x.into_inner(), p2_screen.y.into_inner(), 1.0, 0.0],
-                            [
-                                -p2_screen.y.into_inner(),
-                                p2_screen.x.into_inner(),
-                                0.0,
-                                1.0
-                            ],
-                        ];
-                        let rhs = mat![[
-                            p1_rw.x.into_inner(),
-                            p1_rw.y.into_inner(),
-                            p2_rw.x.into_inner(),
-                            p2_rw.y.into_inner()
-                        ]];
-                        let lu = mtx.full_piv_lu();
-                        let x = lu.solve(rhs.transpose());
-                        self.current_transform = PointTransform {
-                            alpha: x[(0, 0)],
-                            beta: x[(1, 0)],
-                            dx: x[(2, 0)],
-                            dy: x[(3, 0)],
-                        };
+                        self.current_transform = PointTransform::interpolate_from_point_pairs(
+                            (p1_screen, p1_rw),
+                            (p2_screen, p2_rw),
+                        );
                         println!("Transform: {:?}", self.current_transform);
                         self.gathering_state = PointGatheringState::Normal;
                     }
@@ -428,15 +260,5 @@ fn main() {
         viewport: egui::ViewportBuilder::default().with_fullscreen(true),
         ..Default::default()
     };
-    eframe::run_native(
-        "My egui App",
-        options,
-        Box::new(|cc| {
-            // This gives us image support:
-            egui_extras::install_image_loaders(&cc.egui_ctx);
-
-            Box::<App>::default()
-        }),
-    )
-    .unwrap();
+    eframe::run_native("My egui App", options, Box::new(|_c| Box::<App>::default())).unwrap();
 }
