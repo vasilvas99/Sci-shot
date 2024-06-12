@@ -35,8 +35,8 @@ pub struct RegressionLineSegment {
     pub transformed_intercept: f32,
     pub points: UniquePointBuf,
     pub transformed_points: UniquePointBuf,
-    pub start_x: PointCoords,
-    pub end_x: PointCoords,
+    pub leftmost_pt: PointCoords,
+    pub rightmost_pt: PointCoords,
     pub draw_color: egui::Color32,
 }
 
@@ -185,8 +185,8 @@ impl RegressionLineSegment {
             transformed_intercept: intercept,
             points: points.clone(),
             transformed_points: points.clone(),
-            start_x: leftmost.clone(),
-            end_x: rightmost.clone(),
+            leftmost_pt: leftmost.clone(),
+            rightmost_pt: rightmost.clone(),
             draw_color: random_rgb_color32(),
         }
     }
