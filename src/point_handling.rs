@@ -201,9 +201,9 @@ impl RegressionLineSegment {
 
     pub fn new(points: &UniquePointBuf) -> Self {
         let (slope, intercept) = RegressionLineSegment::get_regression_line(points);
-
         let leftmost = points.iter().min_by_key(|p| p.x).unwrap();
         let rightmost = points.iter().max_by_key(|p| p.x).unwrap();
+
         RegressionLineSegment {
             slope,
             intercept,
