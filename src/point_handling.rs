@@ -37,11 +37,18 @@ pub struct RegressionLineSegment {
     pub transformed_points: UniquePointBuf,
     pub leftmost_pt: PointCoords,
     pub rightmost_pt: PointCoords,
-    pub draw_color: egui::Color32,
+    pub draw_color: RGBColor,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct RGBColor {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
 }
 
 impl PointTransform {
-    pub fn _new(alpha: f32, beta: f32, dx: f32, dy: f32) -> Self {
+    pub fn new(alpha: f32, beta: f32, dx: f32, dy: f32) -> Self {
         PointTransform {
             alpha,
             beta,
@@ -78,12 +85,7 @@ impl PointTransform {
         let lu = mtx.full_piv_lu();
         let x = lu.solve(rhs.transpose());
 
-        PointTransform {
-            alpha: x[(0, 0)],
-            beta: x[(1, 0)],
-            dx: x[(2, 0)],
-            dy: x[(3, 0)],
-        }
+        PointTransform::new(x[(0, 0)], x[(1, 0)], x[(2, 0)], x[(3, 0)])
     }
 }
 
@@ -141,6 +143,19 @@ impl PointCoordsStringy {
     }
 }
 
+impl RGBColor {
+    pub fn new(r: u8, g: u8, b: u8) -> Self {
+        RGBColor { r, g, b }
+    }
+    pub fn random_color() -> Self {
+        Self::new(
+            rand::random::<u8>(),
+            rand::random::<u8>(),
+            rand::random::<u8>(),
+        )
+    }
+}
+
 impl From<PointCoords> for egui::Pos2 {
     fn from(val: PointCoords) -> Self {
         egui::Pos2::new(val.x.into_inner(), val.y.into_inner())
@@ -150,6 +165,18 @@ impl From<PointCoords> for egui::Pos2 {
 impl From<egui::Pos2> for PointCoords {
     fn from(val: egui::Pos2) -> Self {
         PointCoords::new(val.x, val.y)
+    }
+}
+
+impl From<egui::Color32> for RGBColor {
+    fn from(val: egui::Color32) -> Self {
+        RGBColor::new(val.r(), val.g(), val.b())
+    }
+}
+
+impl From<RGBColor> for egui::Color32 {
+    fn from(val: RGBColor) -> Self {
+        egui::Color32::from_rgb(val.r, val.g, val.b)
     }
 }
 
@@ -177,9 +204,6 @@ impl RegressionLineSegment {
 
         let leftmost = points.iter().min_by_key(|p| p.x).unwrap();
         let rightmost = points.iter().max_by_key(|p| p.x).unwrap();
-        let r = rand::random::<u8>();
-        let g = rand::random::<u8>();
-        let b = rand::random::<u8>();
         RegressionLineSegment {
             slope,
             intercept,
@@ -189,7 +213,7 @@ impl RegressionLineSegment {
             transformed_points: points.clone(),
             leftmost_pt: leftmost.clone(),
             rightmost_pt: rightmost.clone(),
-            draw_color: egui::Color32::from_rgb(r, g, b),
+            draw_color: RGBColor::random_color(),
         }
     }
 }
