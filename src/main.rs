@@ -101,7 +101,7 @@ impl App {
         for point in self.get_buffer_iterator() {
             ui.painter()
                 .add(egui::Shape::Circle(egui::epaint::CircleShape {
-                    center: point.clone().into(),
+                    center: (*point).into(),
                     radius: POINT_RADIUS,
                     fill: egui::Color32::RED,
                     stroke: Default::default(),
@@ -232,10 +232,10 @@ impl eframe::App for App {
                             let point = self.measurement_buffer_rw_s[i].try_as_numeric().unwrap();
                             self.measurement_buffer_real_world[i] = point;
                         }
-                        let p1_screen = self.measurement_buffer[0].clone();
-                        let p2_screen = self.measurement_buffer[1].clone();
-                        let p1_rw = self.measurement_buffer_real_world[0].clone();
-                        let p2_rw = self.measurement_buffer_real_world[1].clone();
+                        let p1_screen = self.measurement_buffer[0];
+                        let p2_screen = self.measurement_buffer[1];
+                        let p1_rw = self.measurement_buffer_real_world[0];
+                        let p2_rw = self.measurement_buffer_real_world[1];
                         self.current_transform = PointTransform::interpolate_from_point_pairs(
                             (p1_screen, p1_rw),
                             (p2_screen, p2_rw),

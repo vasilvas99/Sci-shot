@@ -11,7 +11,7 @@ pub struct PointTransform {
     pub dy: f32,
 }
 
-#[derive(Eq, Hash, PartialEq, Clone, Debug)]
+#[derive(Eq, Hash, PartialEq, Clone, Copy, Debug)]
 pub struct PointCoords {
     pub x: OrderedFloat<f32>,
     pub y: OrderedFloat<f32>,
