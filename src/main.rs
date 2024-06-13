@@ -9,7 +9,6 @@ use point_handling::{
     UniquePointBuf,
 };
 
-use std::rc::Rc;
 use xcap::Monitor;
 
 static SCREENSHOT_TEXTURE: &str = "screenshot";
@@ -25,7 +24,7 @@ enum PointGatheringState {
 
 struct App {
     preferred_monitor: Monitor,
-    screenshot_texture_handle: Option<Rc<egui::TextureHandle>>,
+    screenshot_texture_handle: Option<egui::TextureHandle>,
     gathering_state: PointGatheringState,
     buffered_points: UniquePointBuf,
     measurement_buffer: BoundedVecDeque<PointCoords>,
@@ -89,12 +88,13 @@ impl App {
                 self.screenshot_from_preferred(),
                 Default::default(),
             );
-            self.screenshot_texture_handle = Some(Rc::from(handle));
+            self.screenshot_texture_handle = Some(handle);
         }
 
         // unwrap is safe because we just set it if it was None
-        let h = self.screenshot_texture_handle.as_ref().unwrap().clone();
-        ui.image(egui::load::SizedTexture::from_handle(&h));
+        ui.image(egui::load::SizedTexture::from_handle(
+            self.screenshot_texture_handle.as_ref().unwrap(),
+        ));
     }
 
     fn paint_buffered_points(&mut self, ui: &egui::Ui) {
