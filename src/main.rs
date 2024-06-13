@@ -97,15 +97,11 @@ impl App {
         ui.image(egui::load::SizedTexture::from_handle(&h));
     }
 
-    fn paint_buffered_points(&mut self, ui: &mut egui::Ui) {
-        let points_to_paint: Box<dyn Iterator<Item = _>> = match self.gathering_state {
-            PointGatheringState::Normal => Box::from(self.buffered_points.iter()),
-            PointGatheringState::Measurement => Box::from(self.measurement_buffer.iter()),
-        };
-        for point in points_to_paint {
+    fn paint_buffered_points(&mut self, ui: &egui::Ui) {
+        for point in self.get_buffer_iterator() {
             ui.painter()
                 .add(egui::Shape::Circle(egui::epaint::CircleShape {
-                    center: point.into(),
+                    center: point.clone().into(),
                     radius: POINT_RADIUS,
                     fill: egui::Color32::RED,
                     stroke: Default::default(),
@@ -113,7 +109,7 @@ impl App {
         }
     }
 
-    fn paint_line_segments(&mut self, ui: &mut egui::Ui, stroke: f32) {
+    fn paint_line_segments(&mut self, ui: &egui::Ui, stroke: f32) {
         for line in &self.regression_lines {
             let start_y = line.slope * line.leftmost_pt.x.into_inner() + line.intercept;
             let end_y = line.slope * line.rightmost_pt.x.into_inner() + line.intercept;
@@ -145,6 +141,26 @@ impl App {
             line.transformed_intercept = new_intercept;
         }
     }
+
+    // returns a type-erased iterator over the points to show based on state
+    fn get_buffer_iterator(&self) -> Box<dyn Iterator<Item = &PointCoords> + '_> {
+        match self.gathering_state {
+            PointGatheringState::Normal => Box::from(self.buffered_points.iter()),
+            PointGatheringState::Measurement => Box::from(self.measurement_buffer.iter()),
+        }
+    }
+
+    // pushes a point to the buffer based on the current state
+    fn push_to_buffer(&mut self, point: PointCoords) {
+        match self.gathering_state {
+            PointGatheringState::Normal => {
+                self.buffered_points.insert(point);
+            }
+            PointGatheringState::Measurement => {
+                let _ = self.measurement_buffer.push_back(point);
+            }
+        }
+    }
 }
 
 impl eframe::App for App {
@@ -154,16 +170,7 @@ impl eframe::App for App {
             .show(ctx, |ui| {
                 self.draw_screenshot_layer(ui);
                 if let Some(pos) = ui.input(secondary_btn_click_pos) {
-                    match self.gathering_state {
-                        PointGatheringState::Normal => {
-                            self.buffered_points.insert(PointCoords::new(pos.x, pos.y));
-                        }
-                        PointGatheringState::Measurement => {
-                            let _ = self
-                                .measurement_buffer
-                                .push_back(PointCoords::new(pos.x, pos.y));
-                        }
-                    }
+                    self.push_to_buffer(pos.into());
                 }
                 self.paint_buffered_points(ui);
 
@@ -184,11 +191,7 @@ impl eframe::App for App {
 
         egui::Window::new("Buffered points").show(ctx, |ui| {
             ui.label("Buffered points:");
-            let points_to_show: Box<dyn Iterator<Item = _>> = match self.gathering_state {
-                PointGatheringState::Normal => Box::from(self.buffered_points.iter()),
-                PointGatheringState::Measurement => Box::from(self.measurement_buffer.iter()),
-            };
-            for point in points_to_show {
+            for point in self.get_buffer_iterator() {
                 let point_rw = point.transform(&self.current_transform);
                 ui.label(format!("({}, {})", point_rw.x, point_rw.y));
             }

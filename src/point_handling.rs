@@ -87,13 +87,6 @@ impl PointTransform {
     }
 }
 
-fn random_rgb_color32() -> egui::Color32 {
-    let r = rand::random::<u8>();
-    let g = rand::random::<u8>();
-    let b = rand::random::<u8>();
-    egui::Color32::from_rgb(r, g, b)
-}
-
 impl Transformable for PointCoords {
     fn transform(&self, transform: &PointTransform) -> Self {
         let m = mat![
@@ -148,9 +141,15 @@ impl PointCoordsStringy {
     }
 }
 
-impl From<&PointCoords> for egui::Pos2 {
-    fn from(val: &PointCoords) -> Self {
+impl From<PointCoords> for egui::Pos2 {
+    fn from(val: PointCoords) -> Self {
         egui::Pos2::new(val.x.into_inner(), val.y.into_inner())
+    }
+}
+
+impl From<egui::Pos2> for PointCoords {
+    fn from(val: egui::Pos2) -> Self {
+        PointCoords::new(val.x, val.y)
     }
 }
 
@@ -178,6 +177,9 @@ impl RegressionLineSegment {
 
         let leftmost = points.iter().min_by_key(|p| p.x).unwrap();
         let rightmost = points.iter().max_by_key(|p| p.x).unwrap();
+        let r = rand::random::<u8>();
+        let g = rand::random::<u8>();
+        let b = rand::random::<u8>();
         RegressionLineSegment {
             slope,
             intercept,
@@ -187,7 +189,7 @@ impl RegressionLineSegment {
             transformed_points: points.clone(),
             leftmost_pt: leftmost.clone(),
             rightmost_pt: rightmost.clone(),
-            draw_color: random_rgb_color32(),
+            draw_color: egui::Color32::from_rgb(r, g, b),
         }
     }
 }
