@@ -128,13 +128,13 @@ impl App {
             return;
         }
         self.regression_lines
-            .push(RegressionLineSegment::new(&self.buffered_points));
+            .push(RegressionLineSegment::new(self.buffered_points.clone()));
         self.buffered_points.clear();
     }
 
     fn transform_line_segments(&mut self) {
         for line in &mut self.regression_lines {
-            line.transformed_points = line.points.transform(&self.current_transform);
+            line.transformed_points = line.points.transform(&self.current_transform).into();
             let (new_slope, new_intercept) =
                 RegressionLineSegment::get_regression_line(&line.transformed_points);
             line.transformed_slope = new_slope;

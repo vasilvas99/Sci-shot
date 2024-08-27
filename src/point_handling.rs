@@ -1,7 +1,7 @@
 use faer::{self, mat, solvers::SpSolver};
 use ordered_float::OrderedFloat;
 pub type UniquePointBuf = HashSet<PointCoords>;
-use std::collections::HashSet;
+use std::{collections::HashSet, rc::Rc};
 
 #[derive(Debug)]
 pub struct PointTransform {
@@ -32,8 +32,8 @@ pub struct RegressionLineSegment {
     pub intercept: f32,
     pub transformed_slope: f32,
     pub transformed_intercept: f32,
-    pub points: UniquePointBuf,
-    pub transformed_points: UniquePointBuf,
+    pub points: Rc<UniquePointBuf>,
+    pub transformed_points: Rc<UniquePointBuf>,
     pub leftmost_pt: PointCoords,
     pub rightmost_pt: PointCoords,
     pub draw_color: RGBColor,
@@ -192,20 +192,22 @@ impl RegressionLineSegment {
         (slope, intercept)
     }
 
-    pub fn new(points: &UniquePointBuf) -> Self {
-        let (slope, intercept) = RegressionLineSegment::get_regression_line(points);
-        let leftmost = points.iter().min_by_key(|p| p.x).unwrap();
-        let rightmost = points.iter().max_by_key(|p| p.x).unwrap();
+    pub fn new(points: UniquePointBuf) -> Self {
+        let rightmost = points.iter().max_by_key(|p| p.x).unwrap().clone();
+        let leftmost = points.iter().min_by_key(|p| p.x).unwrap().clone();
 
+        let points_ref = Rc::from(points);
+        let (slope, intercept) =
+            RegressionLineSegment::get_regression_line(points_ref.clone().as_ref());
         RegressionLineSegment {
             slope,
             intercept,
             transformed_slope: slope,
             transformed_intercept: intercept,
-            points: points.clone(),
-            transformed_points: points.clone(),
-            leftmost_pt: leftmost.clone(),
-            rightmost_pt: rightmost.clone(),
+            points: points_ref.clone(),
+            transformed_points: points_ref.clone(),
+            leftmost_pt: leftmost,
+            rightmost_pt: rightmost,
             draw_color: RGBColor::random_color(),
         }
     }
