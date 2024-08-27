@@ -25,7 +25,6 @@ pub struct PointCoordsStringy {
 
 pub trait Transformable {
     fn transform(&self, transform: &PointTransform) -> Self;
-    fn transform_inplace(&mut self, transform: &PointTransform);
 }
 
 pub struct RegressionLineSegment {
@@ -103,9 +102,6 @@ impl Transformable for PointCoords {
             y: OrderedFloat(p_transformed[(1, 0)]),
         }
     }
-    fn transform_inplace(&mut self, _transform: &PointTransform) {
-        todo!("Implement in-place transformation for ScreenPoint")
-    }
 }
 
 impl Transformable for UniquePointBuf {
@@ -113,9 +109,6 @@ impl Transformable for UniquePointBuf {
         self.iter()
             .map(|p| p.transform(transform))
             .collect::<UniquePointBuf>()
-    }
-    fn transform_inplace(&mut self, _transform: &PointTransform) {
-        todo!("Implement in-place transformation for UniquePointBuf");
     }
 }
 

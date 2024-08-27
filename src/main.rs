@@ -207,7 +207,10 @@ impl eframe::App for App {
                         if ui.button("❌").clicked() {
                             keep[idx] = false;
                         }
-                        ui.add_enabled(false, egui::Button::new("        ").fill(line.draw_color));
+                        ui.add_enabled(
+                            false,
+                            egui::Button::new(" ".repeat(8)).fill(line.draw_color),
+                        );
                         ui.label(format!(
                             "y = {:.3}x + {:.3}",
                             line.transformed_slope, line.transformed_intercept
