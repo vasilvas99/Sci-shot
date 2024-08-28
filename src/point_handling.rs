@@ -209,6 +209,14 @@ impl RegressionLineSegment {
             transformed_points: points_ref.clone(),
         }
     }
+
+    pub fn transform_line(&mut self, transform: &PointTransform) {
+        let transformed_points = self.points.transform(transform);
+        let (slope, intercept) = RegressionLineSegment::get_regression_line(&transformed_points);
+        self.transformed_slope = slope;
+        self.transformed_intercept = intercept;
+        self.transformed_points = Rc::from(transformed_points);
+    }
 }
 
 impl ScreenLineSegment {

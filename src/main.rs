@@ -5,8 +5,8 @@ use eframe::egui;
 use egui::{ColorImage, InputState};
 
 use point_handling::{
-    PointCoords, PointCoordsStringy, PointTransform, RegressionLineSegment, ScreenLineSegment,
-    Transformable, UniquePointBuf,
+    PointCoords, PointCoordsStringy, PointTransform, ScreenLineSegment, Transformable,
+    UniquePointBuf,
 };
 
 use xcap::Monitor;
@@ -136,17 +136,9 @@ impl App {
     }
 
     fn transform_line_segments(&mut self) {
-        for line in &mut self.regression_lines {
-            line.regressor.transformed_points = line
-                .regressor
-                .points
-                .transform(&self.current_transform)
-                .into();
-            let (new_slope, new_intercept) =
-                RegressionLineSegment::get_regression_line(&line.regressor.transformed_points);
-            line.regressor.transformed_slope = new_slope;
-            line.regressor.transformed_intercept = new_intercept;
-        }
+        self.regression_lines.iter_mut().for_each(|line| {
+            line.regressor.transform_line(&self.current_transform);
+        });
     }
 
     // returns a type-erased iterator over the points to show based on state
