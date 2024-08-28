@@ -1,7 +1,8 @@
 use faer::{self, mat, solvers::SpSolver};
 use ordered_float::OrderedFloat;
 pub type UniquePointBuf = HashSet<PointCoords>;
-use std::collections::HashSet;
+use num_traits::Float;
+use std::{collections::HashSet, fmt::Display};
 
 #[derive(Debug)]
 pub struct PointTransform {
@@ -215,6 +216,14 @@ impl RegressionLineSegment {
         self.transformed_intercept = intercept;
         self.transformed_points = transformed_points;
     }
+
+    fn pretty_line_equation<T: Float + Display>(slope: T, intercept: T) -> String {
+        if intercept < T::zero() {
+            format!("y = {:.3}x - {:.3}", slope, -intercept)
+        } else {
+            format!("y = {:.3}x + {:.3}", slope, intercept)
+        }
+    }
 }
 
 impl ScreenLineSegment {
@@ -228,5 +237,11 @@ impl ScreenLineSegment {
             leftmost_pt: leftmost,
             draw_color: RGBColor::random_color(),
         }
+    }
+    pub fn transformed_line_equation(&self) -> String {
+        RegressionLineSegment::pretty_line_equation(
+            self.regressor.transformed_slope,
+            self.regressor.transformed_intercept,
+        )
     }
 }

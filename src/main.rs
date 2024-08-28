@@ -210,15 +210,13 @@ impl eframe::App for App {
                             false,
                             egui::Button::new(" ".repeat(8)).fill(line.draw_color),
                         );
-                        ui.label(format!(
-                            "y = {:.3}x + {:.3}",
-                            line.regressor.transformed_slope, line.regressor.transformed_intercept
-                        ));
+                        ui.label(line.transformed_line_equation());
                     });
                 }
                 let mut iter = keep.iter();
                 self.regression_lines.retain(|_| *iter.next().unwrap());
             });
+
         egui::Window::new("Transform calibration")
             .default_pos(egui::pos2(0.0, 500.0))
             .default_open(false)

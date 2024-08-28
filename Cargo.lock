@@ -3408,6 +3408,7 @@ dependencies = [
  "env_logger",
  "faer",
  "image 0.25.1",
+ "num-traits",
  "ordered-float",
  "rand",
  "xcap",
