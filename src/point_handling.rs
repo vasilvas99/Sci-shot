@@ -32,8 +32,8 @@ pub struct RegressionLineSegment {
     pub intercept: f32,
     pub transformed_slope: f32,
     pub transformed_intercept: f32,
-    pub points: Rc<UniquePointBuf>,
-    pub transformed_points: Rc<UniquePointBuf>,
+    points: Rc<UniquePointBuf>,
+    transformed_points: Rc<UniquePointBuf>,
 }
 
 pub struct ScreenLineSegment {
