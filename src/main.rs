@@ -5,8 +5,8 @@ use eframe::egui;
 use egui::{ColorImage, InputState};
 
 use point_handling::{
-    PointCoords, PointCoordsStringy, PointTransform, RegressionLineSegment, Transformable,
-    UniquePointBuf,
+    PointCoords, PointCoordsStringy, PointTransform, RegressionLineSegment, ScreenLineSegment,
+    Transformable, UniquePointBuf,
 };
 
 use xcap::Monitor;
@@ -30,7 +30,7 @@ struct App {
     measurement_buffer: BoundedVecDeque<PointCoords>,
     measurement_buffer_real_world: BoundedVecDeque<PointCoords>,
     measurement_buffer_rw_s: BoundedVecDeque<PointCoordsStringy>,
-    regression_lines: Vec<RegressionLineSegment>,
+    regression_lines: Vec<ScreenLineSegment>,
     current_transform: PointTransform,
 }
 
@@ -111,8 +111,10 @@ impl App {
 
     fn paint_line_segments(&mut self, ui: &egui::Ui, stroke: f32) {
         for line in &self.regression_lines {
-            let start_y = line.slope * line.leftmost_pt.x.into_inner() + line.intercept;
-            let end_y = line.slope * line.rightmost_pt.x.into_inner() + line.intercept;
+            let start_y =
+                line.regressor.slope * line.leftmost_pt.x.into_inner() + line.regressor.intercept;
+            let end_y =
+                line.regressor.slope * line.rightmost_pt.x.into_inner() + line.regressor.intercept;
             let start_pos = egui::Pos2::new(line.leftmost_pt.x.into_inner(), start_y);
             let end_pos = egui::Pos2::new(line.rightmost_pt.x.into_inner(), end_y);
             let points = [start_pos, end_pos];
@@ -127,18 +129,23 @@ impl App {
         if self.buffered_points.len() < 2 {
             return;
         }
-        self.regression_lines
-            .push(RegressionLineSegment::new(self.buffered_points.clone()));
+        self.regression_lines.push(ScreenLineSegment::new_from_buf(
+            self.buffered_points.clone(),
+        ));
         self.buffered_points.clear();
     }
 
     fn transform_line_segments(&mut self) {
         for line in &mut self.regression_lines {
-            line.transformed_points = line.points.transform(&self.current_transform).into();
+            line.regressor.transformed_points = line
+                .regressor
+                .points
+                .transform(&self.current_transform)
+                .into();
             let (new_slope, new_intercept) =
-                RegressionLineSegment::get_regression_line(&line.transformed_points);
-            line.transformed_slope = new_slope;
-            line.transformed_intercept = new_intercept;
+                RegressionLineSegment::get_regression_line(&line.regressor.transformed_points);
+            line.regressor.transformed_slope = new_slope;
+            line.regressor.transformed_intercept = new_intercept;
         }
     }
 
@@ -213,7 +220,7 @@ impl eframe::App for App {
                         );
                         ui.label(format!(
                             "y = {:.3}x + {:.3}",
-                            line.transformed_slope, line.transformed_intercept
+                            line.regressor.transformed_slope, line.regressor.transformed_intercept
                         ));
                     });
                 }

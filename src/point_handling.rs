@@ -34,8 +34,12 @@ pub struct RegressionLineSegment {
     pub transformed_intercept: f32,
     pub points: Rc<UniquePointBuf>,
     pub transformed_points: Rc<UniquePointBuf>,
-    pub leftmost_pt: PointCoords,
+}
+
+pub struct ScreenLineSegment {
+    pub regressor: RegressionLineSegment,
     pub rightmost_pt: PointCoords,
+    pub leftmost_pt: PointCoords,
     pub draw_color: RGBColor,
 }
 
@@ -193,9 +197,6 @@ impl RegressionLineSegment {
     }
 
     pub fn new(points: UniquePointBuf) -> Self {
-        let rightmost = points.iter().max_by_key(|p| p.x).unwrap().clone();
-        let leftmost = points.iter().min_by_key(|p| p.x).unwrap().clone();
-
         let points_ref = Rc::from(points);
         let (slope, intercept) =
             RegressionLineSegment::get_regression_line(points_ref.clone().as_ref());
@@ -206,8 +207,19 @@ impl RegressionLineSegment {
             transformed_intercept: intercept,
             points: points_ref.clone(),
             transformed_points: points_ref.clone(),
-            leftmost_pt: leftmost,
+        }
+    }
+}
+
+impl ScreenLineSegment {
+    pub fn new_from_buf(raw_point_buffer: UniquePointBuf) -> Self {
+        let rightmost = *raw_point_buffer.iter().max_by_key(|p| p.x).unwrap();
+        let leftmost = *raw_point_buffer.iter().min_by_key(|p| p.x).unwrap();
+        let line = RegressionLineSegment::new(raw_point_buffer);
+        ScreenLineSegment {
+            regressor: line,
             rightmost_pt: rightmost,
+            leftmost_pt: leftmost,
             draw_color: RGBColor::random_color(),
         }
     }
