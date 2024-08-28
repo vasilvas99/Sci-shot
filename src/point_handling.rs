@@ -1,7 +1,7 @@
 use faer::{self, mat, solvers::SpSolver};
 use ordered_float::OrderedFloat;
 pub type UniquePointBuf = HashSet<PointCoords>;
-use std::{collections::HashSet, rc::Rc};
+use std::collections::HashSet;
 
 #[derive(Debug)]
 pub struct PointTransform {
@@ -32,8 +32,8 @@ pub struct RegressionLineSegment {
     pub intercept: f32,
     pub transformed_slope: f32,
     pub transformed_intercept: f32,
-    points: Rc<UniquePointBuf>,
-    transformed_points: Rc<UniquePointBuf>,
+    points: UniquePointBuf,
+    transformed_points: UniquePointBuf,
 }
 
 pub struct ScreenLineSegment {
@@ -197,16 +197,14 @@ impl RegressionLineSegment {
     }
 
     pub fn new(points: UniquePointBuf) -> Self {
-        let points_ref = Rc::from(points);
-        let (slope, intercept) =
-            RegressionLineSegment::get_regression_line(points_ref.clone().as_ref());
+        let (slope, intercept) = RegressionLineSegment::get_regression_line(&points);
         RegressionLineSegment {
             slope,
             intercept,
             transformed_slope: slope,
             transformed_intercept: intercept,
-            points: points_ref.clone(),
-            transformed_points: points_ref.clone(),
+            points: points.clone(),
+            transformed_points: points,
         }
     }
 
@@ -215,7 +213,7 @@ impl RegressionLineSegment {
         let (slope, intercept) = RegressionLineSegment::get_regression_line(&transformed_points);
         self.transformed_slope = slope;
         self.transformed_intercept = intercept;
-        self.transformed_points = Rc::from(transformed_points);
+        self.transformed_points = transformed_points;
     }
 }
 
