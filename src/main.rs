@@ -111,10 +111,10 @@ impl App {
 
     fn paint_line_segments(&mut self, ui: &egui::Ui, stroke: f32) {
         for line in &self.regression_lines {
-            let start_y =
-                line.regressor.slope * line.leftmost_pt.x.into_inner() + line.regressor.intercept;
-            let end_y =
-                line.regressor.slope * line.rightmost_pt.x.into_inner() + line.regressor.intercept;
+            let start_y = line.screen_space_slope() * line.leftmost_pt.x.into_inner()
+                + line.screen_space_intercept();
+            let end_y = line.screen_space_slope() * line.rightmost_pt.x.into_inner()
+                + line.screen_space_intercept();
             let start_pos = egui::Pos2::new(line.leftmost_pt.x.into_inner(), start_y);
             let end_pos = egui::Pos2::new(line.rightmost_pt.x.into_inner(), end_y);
             let points = [start_pos, end_pos];
@@ -137,7 +137,7 @@ impl App {
 
     fn transform_line_segments(&mut self) {
         self.regression_lines.iter_mut().for_each(|line| {
-            line.regressor.transform_line(&self.current_transform);
+            line.transform_line(&self.current_transform);
         });
     }
 

@@ -28,17 +28,17 @@ pub trait Transformable {
     fn transform(&self, transform: &PointTransform) -> Self;
 }
 
-pub struct RegressionLineSegment {
-    pub slope: f32,
-    pub intercept: f32,
-    pub transformed_slope: f32,
-    pub transformed_intercept: f32,
+struct RegressionLineSegment {
+    slope: f32,
+    intercept: f32,
+    transformed_slope: f32,
+    transformed_intercept: f32,
     points: UniquePointBuf,
     transformed_points: UniquePointBuf,
 }
 
 pub struct ScreenLineSegment {
-    pub regressor: RegressionLineSegment,
+    regressor: RegressionLineSegment,
     pub rightmost_pt: PointCoords,
     pub leftmost_pt: PointCoords,
     pub draw_color: RGBColor,
@@ -238,6 +238,19 @@ impl ScreenLineSegment {
             draw_color: RGBColor::random_color(),
         }
     }
+
+    pub fn screen_space_slope(&self) -> f32 {
+        self.regressor.slope
+    }
+
+    pub fn screen_space_intercept(&self) -> f32 {
+        self.regressor.intercept
+    }
+
+    pub fn transform_line(&mut self, transform: &PointTransform) {
+        self.regressor.transform_line(transform);
+    }
+
     pub fn transformed_line_equation(&self) -> String {
         RegressionLineSegment::pretty_line_equation(
             self.regressor.transformed_slope,
