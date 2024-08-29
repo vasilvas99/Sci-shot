@@ -3,25 +3,22 @@ name = "sci-shot"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+rust-version = "1.76.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 bounded-vec-deque = "0.1.1"
-eframe = {version = "0.27.2", features = [
-    "default",
-    "__screenshot", # __screenshot is so we can dump a screenshot using EFRAME_SCREENSHOT_TO
-] }
-
-egui = "0.27.2"
-egui_extras = "0.27.2"
+eframe = "0.28.1"
+egui = "0.28.1"
+egui_extras = "0.28.1"
 env_logger = "0.11.3"
 faer = "0.19.0"
 image = "0.25.1"
 num-traits = "0.2.19"
 ordered-float = "4.2.0"
 rand = "0.8.5"
-xcap = "0.0.9"
+xcap = "0.0.13"
 
 
 [profile.small]

@@ -263,5 +263,10 @@ fn main() {
         viewport: egui::ViewportBuilder::default().with_fullscreen(true),
         ..Default::default()
     };
-    eframe::run_native("My egui App", options, Box::new(|_c| Box::<App>::default())).unwrap();
+    eframe::run_native(
+        "My egui App",
+        options,
+        Box::new(|_c| Ok(Box::<App>::default())),
+    )
+    .unwrap();
 }
