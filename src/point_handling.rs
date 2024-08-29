@@ -222,8 +222,6 @@ impl RegressionLineSegment {
     pub fn new(points: UniquePointBuf) -> Self {
         let (slope, intercept) = RegressionLineSegment::get_regression_line(&points);
         RegressionLineSegment {
-            slope,
-            intercept,
             transformed_slope: slope,
             transformed_intercept: intercept,
             points: points.clone(),
