@@ -2,7 +2,11 @@ use faer::{self, mat, solvers::SpSolver};
 use ordered_float::OrderedFloat;
 pub type UniquePointBuf = HashSet<PointCoords>;
 use num_traits::Float;
-use std::{collections::HashSet, fmt::Display};
+use std::{
+    collections::HashSet,
+    fmt::Display,
+    ops::{Add, Sub},
+};
 
 #[derive(Debug)]
 pub struct PointTransform {
@@ -29,8 +33,6 @@ pub trait Transformable {
 }
 
 struct RegressionLineSegment {
-    slope: f32,
-    intercept: f32,
     transformed_slope: f32,
     transformed_intercept: f32,
     points: UniquePointBuf,
@@ -123,6 +125,26 @@ impl PointCoords {
             x: OrderedFloat(x),
             y: OrderedFloat(y),
         }
+    }
+}
+
+impl Sub for PointCoords {
+    type Output = PointCoords;
+    fn sub(self, other: Self) -> Self::Output {
+        PointCoords::new(
+            self.x.into_inner() - other.x.into_inner(),
+            self.y.into_inner() - other.y.into_inner(),
+        )
+    }
+}
+
+impl Add for PointCoords {
+    type Output = PointCoords;
+    fn add(self, other: Self) -> Self::Output {
+        PointCoords::new(
+            self.x.into_inner() + other.x.into_inner(),
+            self.y.into_inner() + other.y.into_inner(),
+        )
     }
 }
 
@@ -240,11 +262,13 @@ impl ScreenLineSegment {
     }
 
     pub fn screen_space_slope(&self) -> f32 {
-        self.regressor.slope
+        (self.leftmost_pt - self.rightmost_pt).y.into_inner()
+            / (self.leftmost_pt - self.rightmost_pt).x.into_inner()
     }
 
     pub fn screen_space_intercept(&self) -> f32 {
-        self.regressor.intercept
+        self.leftmost_pt.y.into_inner()
+            - self.screen_space_slope() * self.leftmost_pt.x.into_inner()
     }
 
     pub fn transform_line(&mut self, transform: &PointTransform) {
