@@ -20,10 +20,11 @@ ordered-float = "4.2.0"
 rand = "0.8.5"
 xcap = "0.0.13"
 
+[profile.release]
+strip = true
+lto = true
 
 [profile.small]
 inherits = "release"
 opt-level = "z"
-lto = true
-strip = true
 codegen-units = 1
