@@ -8,7 +8,7 @@ use std::{
     ops::{Add, Sub},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct PointTransform {
     pub alpha: f32, // Cos theta
     pub beta: f32,  // Sin theta
@@ -35,7 +35,9 @@ pub trait Transformable {
 struct RegressionLineSegment {
     transformed_slope: f32,
     transformed_intercept: f32,
-    points: UniquePointBuf,
+    // We save the transform so we can later export the struct to a file
+    transform: PointTransform,
+    screen_points: UniquePointBuf,
 }
 
 pub struct ScreenLineSegment {
@@ -59,6 +61,14 @@ impl PointTransform {
             beta,
             dx,
             dy,
+        }
+    }
+    pub const fn identity() -> Self {
+        PointTransform {
+            alpha: 1.0,
+            beta: 0.0,
+            dx: 0.0,
+            dy: 0.0,
         }
     }
     pub fn interpolate_from_point_pairs(
@@ -223,13 +233,15 @@ impl RegressionLineSegment {
         RegressionLineSegment {
             transformed_slope: slope,
             transformed_intercept: intercept,
-            points: points,
+            transform: PointTransform::identity(),
+            screen_points: points,
         }
     }
 
     pub fn transform_line(&mut self, transform: &PointTransform) {
-        let transformed_points = self.points.transform(transform);
+        let transformed_points = self.screen_points.transform(transform);
         let (slope, intercept) = RegressionLineSegment::get_regression_line(&transformed_points);
+        self.transform = *transform;
         self.transformed_slope = slope;
         self.transformed_intercept = intercept;
     }
