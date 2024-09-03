@@ -36,7 +36,6 @@ struct RegressionLineSegment {
     transformed_slope: f32,
     transformed_intercept: f32,
     points: UniquePointBuf,
-    transformed_points: UniquePointBuf,
 }
 
 pub struct ScreenLineSegment {
@@ -224,8 +223,7 @@ impl RegressionLineSegment {
         RegressionLineSegment {
             transformed_slope: slope,
             transformed_intercept: intercept,
-            points: points.clone(),
-            transformed_points: points,
+            points: points,
         }
     }
 
@@ -234,7 +232,6 @@ impl RegressionLineSegment {
         let (slope, intercept) = RegressionLineSegment::get_regression_line(&transformed_points);
         self.transformed_slope = slope;
         self.transformed_intercept = intercept;
-        self.transformed_points = transformed_points;
     }
 
     fn pretty_line_equation<T: Float + Display>(slope: T, intercept: T) -> String {
