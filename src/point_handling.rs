@@ -2,10 +2,15 @@ use faer::{self, mat, solvers::SpSolver};
 use ordered_float::OrderedFloat;
 pub type UniquePointBuf = HashSet<PointCoords>;
 use num_traits::Float;
-use std::{
-    collections::HashSet, fmt::Display, fs::File, ops::{Add, Sub}, path::Path, thread
-};
 use serde::{de::Error, Serialize};
+use std::{
+    collections::HashSet,
+    fmt::Display,
+    fs::File,
+    ops::{Add, Sub},
+    path::Path,
+    thread,
+};
 
 #[derive(Debug, Serialize, Clone, Copy)]
 pub struct PointTransform {
@@ -253,7 +258,6 @@ impl RegressionLineSegment {
             format!("y = {:.3}x + {:.3}", slope, intercept)
         }
     }
-    
 }
 
 impl ScreenLineSegment {
