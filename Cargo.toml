@@ -3,11 +3,12 @@ name = "sci-shot"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-rust-version = "1.76.0"
+rust-version = "1.80.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.86"
 bounded-vec-deque = "0.1.1"
 eframe = "0.28.1"
 egui = "0.28.1"
@@ -16,8 +17,10 @@ env_logger = "0.11.3"
 faer = "0.19.0"
 image = "0.25.1"
 num-traits = "0.2.19"
-ordered-float = "4.2.0"
+ordered-float = { version = "4.2.2", features = ["serde"] }
 rand = "0.8.5"
+serde = "1.0.209"
+serde_json = "1.0.127"
 xcap = "0.0.13"
 
 [profile.release]
