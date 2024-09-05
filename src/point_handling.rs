@@ -3,12 +3,11 @@ use ordered_float::OrderedFloat;
 pub type UniquePointBuf = HashSet<PointCoords>;
 use num_traits::Float;
 use std::{
-    collections::HashSet,
-    fmt::Display,
-    ops::{Add, Sub},
+    collections::HashSet, fmt::Display, fs::File, ops::{Add, Sub}, path::Path, thread
 };
+use serde::{de::Error, Serialize};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Serialize, Clone, Copy)]
 pub struct PointTransform {
     pub alpha: f32, // Cos theta
     pub beta: f32,  // Sin theta
@@ -16,7 +15,7 @@ pub struct PointTransform {
     pub dy: f32,
 }
 
-#[derive(Eq, Hash, PartialEq, Clone, Copy, Debug)]
+#[derive(Eq, Hash, PartialEq, Serialize, Clone, Copy, Debug)]
 pub struct PointCoords {
     pub x: OrderedFloat<f32>,
     pub y: OrderedFloat<f32>,
@@ -32,6 +31,7 @@ pub trait Transformable {
     fn transform(&self, transform: &PointTransform) -> Self;
 }
 
+#[derive(Serialize)]
 struct RegressionLineSegment {
     transformed_slope: f32,
     transformed_intercept: f32,
@@ -253,6 +253,7 @@ impl RegressionLineSegment {
             format!("y = {:.3}x + {:.3}", slope, intercept)
         }
     }
+    
 }
 
 impl ScreenLineSegment {
@@ -287,5 +288,9 @@ impl ScreenLineSegment {
             self.regressor.transformed_slope,
             self.regressor.transformed_intercept,
         )
+    }
+
+    pub fn raw_point_coords(&self) -> Vec<PointCoords> {
+        self.regressor.screen_points.iter().copied().collect()
     }
 }

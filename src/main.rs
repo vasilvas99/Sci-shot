@@ -1,20 +1,30 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use std::{cell::OnceCell, io::Write, path::PathBuf, sync::{LazyLock, Once}, thread};
+
+use anyhow::Result;
 use bounded_vec_deque::BoundedVecDeque;
 use eframe::egui;
 use egui::{ColorImage, InputState};
-
 use point_handling::{
     PointCoords, PointCoordsStringy, PointTransform, ScreenLineSegment, Transformable,
     UniquePointBuf,
 };
-
 use xcap::Monitor;
 
 static SCREENSHOT_TEXTURE: &str = "screenshot";
 static LINE_THICKNESS: f32 = 3.0;
 static POINT_RADIUS: f32 = 2.5;
 static NUM_CALIBRATION_POINTS: usize = 2;
+static SAVE_DIR: LazyLock<PathBuf> = LazyLock::new(
+    || {
+        let mut path = std::env::current_dir().unwrap();
+        path.push("exported_lines");
+        std::fs::create_dir_all(&path).unwrap();
+        path
+    }
+);
+
 
 mod point_handling;
 enum PointGatheringState {
@@ -22,7 +32,23 @@ enum PointGatheringState {
     Measurement,
 }
 
+struct IoResult {
+    id: u64,
+    file_path: PathBuf,
+    processing_result: Result<()>,
+}
+
+struct IoRequest {
+    id: u64,
+    file_path: PathBuf,
+    points: Vec<PointCoords>,
+    transform: PointTransform,
+}
+
 struct App {
+    io_req_ch: std::sync::mpsc::Sender<IoRequest>,
+    io_result_ch: std::sync::mpsc::Receiver<IoResult>,
+    last_sent_req_id: u64,
     preferred_monitor: Monitor,
     screenshot_texture_handle: Option<egui::TextureHandle>,
     gathering_state: PointGatheringState,
@@ -48,7 +74,12 @@ impl Default for App {
             .into_iter()
             .find(|m| m.is_primary())
             .unwrap();
+        let mock_channel_req = std::sync::mpsc::channel();
+        let mock_channel_res = std::sync::mpsc::channel();
         App {
+            io_req_ch: mock_channel_req.0,
+            io_result_ch: mock_channel_res.1,
+            last_sent_req_id: 0,
             preferred_monitor: primary,
             screenshot_texture_handle: None,
             gathering_state: PointGatheringState::Normal,
@@ -178,6 +209,29 @@ impl eframe::App for App {
                     self.process_points_buffer();
                 }
 
+                if ctx.input(|i| i.key_pressed(egui::Key::S)) {
+                    // send write request for each line in a separate file
+                    for (idx, line) in self.regression_lines.iter().enumerate() {
+                        let save_path = SAVE_DIR.join(format!("line_{}.csv", idx));
+                        let req = IoRequest {
+                            id: self.last_sent_req_id,
+                            file_path: save_path,
+                            points: line.raw_point_coords(),
+                            transform: self.current_transform,
+                        };
+                        self.io_req_ch.send(req).unwrap();
+                        self.last_sent_req_id += 1;
+                    }
+                }
+
+                for res in self.io_result_ch.try_iter() {
+                    if let Err(e) = res.processing_result {
+                        eprintln!("Error processing request {}: {:?}", res.id, e);
+                    } else {
+                        println!("Request {} processed successfully", res.id);
+                    }
+                }
+
                 self.transform_line_segments();
 
                 // paint line segments
@@ -263,10 +317,42 @@ fn main() {
         viewport: egui::ViewportBuilder::default().with_fullscreen(true),
         ..Default::default()
     };
+    let (io_req_s, io_req_r) = std::sync::mpsc::channel::<IoRequest>();
+    let (io_result_s, io_result_r) = std::sync::mpsc::channel::<IoResult>();
+    
+    let th = std::thread::spawn(move || {
+        for req in io_req_r {
+            // wait for io request and dump all the points to a file
+            let mut file = std::fs::File::create(&req.file_path).unwrap();
+            
+            let mut write_str = String::new();
+            for point in &req.points {
+                write_str.push_str(&format!("{},{}\n", point.x, point.y));
+            }
+            
+            let write_result = file.write_all(write_str.as_bytes());
+    
+            io_result_s.send(IoResult {
+                id: req.id,
+                file_path: req.file_path,
+                processing_result: write_result.map_err(anyhow::Error::from),
+            }).unwrap();
+        }
+    });
+
     eframe::run_native(
         "My egui App",
         options,
-        Box::new(|_c| Ok(Box::<App>::default())),
+        Box::new(|_c| {
+            Ok(Box::new(App {
+                io_req_ch: io_req_s,
+                io_result_ch: io_result_r,
+                ..Default::default()
+            }))
+        }),
     )
     .unwrap();
+
+
+    th.join().unwrap();
 }
